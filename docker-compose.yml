@@ -1,0 +1,108 @@
+services:
+  laravel-app:
+    build:
+      context: ./src/php
+    container_name: laravel-app
+    volumes:
+      - ./src/php:/var/www/html
+    working_dir: /var/www/html
+    command: php-fpm
+    environment:
+      APP_ENV: local
+      APP_DEBUG: true
+    depends_on:
+      laravel-mysql:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  laravel-scheduler:
+    build:
+      context: ./src/php
+    container_name: laravel-scheduler
+    volumes:
+      - ./src/php:/var/www/html
+    working_dir: /var/www/html
+    command: sleep infinity
+    environment:
+      APP_ENV: local
+      APP_DEBUG: true
+    depends_on:
+      - laravel-app
+
+  go-service:
+    build:
+      context: ./src/go
+    container_name: go-service
+    environment:
+      MYSQL_DSN: "go:root@tcp(go-mysql:3306)/go_service?charset=utf8mb4&parseTime=True&loc=UTC"
+      RABBIT_URL: "amqp://guest:guest@rabbitmq:5672/"
+      RABBIT_QUEUE: wallet_queue
+    depends_on:
+      go-mysql:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  laravel-mysql:
+    image: mysql:8
+    container_name: laravel-mysql
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -uroot -proot > /dev/null 2>&1 || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    environment:
+      TZ: UTC
+      MYSQL_DATABASE: laravel
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_USER: laravel
+      MYSQL_PASSWORD: root
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql8_laravel-data:/var/lib/mysql
+
+  go-mysql:
+    image: mysql:8
+    container_name: go-mysql
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -uroot -proot > /dev/null 2>&1 || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    environment:
+      TZ: UTC
+      MYSQL_DATABASE: go_service
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_USER: go
+      MYSQL_PASSWORD: root
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql8_go-data:/var/lib/mysql
+
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    container_name: rabbitmq
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "rabbitmq-diagnostics ping || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    ports:
+      - "5672:5672"     # AMQP (Laravel Queue)
+      - "15672:15672"   # Web UI
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+
+volumes:
+  mysql8_laravel-data:
+  mysql8_go-data:
+  rabbitmq_data:
