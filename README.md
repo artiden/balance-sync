@@ -183,3 +183,93 @@ Includes the following services:
 * Cache logic is minimal by design and must be extended for real-life usage.
 
 ---
+
+## ⚠️ Production-Level Considerations (Important)
+
+This project is built as an **MVP prototype**, not a production-ready solution.
+Several components are intentionally simplified to keep the implementation focused on the assignment requirements.
+
+Below are areas that **require improvements** before real-world deployment:
+
+### **1. Connection Reliability**
+
+Both Laravel and the Go service currently assume that dependencies (MySQL, RabbitMQ) are always available.
+To be production-ready, the system must include:
+
+* Retry logic for MySQL and RabbitMQ connections
+* Exponential backoff with jitter
+* Graceful reconnection policies
+* Proper connection timeouts
+* Circuit breaker or fallback logic for unstable environments
+
+### **2. Error Handling**
+
+Many code paths in both services skip deeper boundary-case processing.
+A production system needs:
+
+* Full validation of incoming messages
+* Detailed error wrapping and logging
+* Distinguishing between transient and fatal failures
+* Recovery from corrupted or unexpected messages
+* Protection from message storms or oversized payloads
+
+### **3. Cache Logic (Go Service)**
+
+The in-memory cache is minimal and only meets the assignment’s requirements.
+Real usage would require:
+
+* Get/Set API with TTL
+* DB fallback logic
+* Cache invalidation strategies
+* Background refresh with configurable intervals
+* Race-condition protection for concurrent read/write operations
+* Eviction policies for large datasets
+
+### **4. Message Processing**
+
+The Golang consumer currently assumes messages come in acceptable volumes.
+Production queues should include:
+
+* Prefetch limits
+* Dead-letter queues
+* Retry queues
+* Poison-message detection
+* Metrics and monitoring
+
+### **5. Scheduler Logic (Laravel)**
+
+The balance update scheduler is simple and works on a fixed interval.
+For real deployments:
+
+* Use Laravel Horizon or Supervisor
+* Add randomness to reduce load spikes
+* Implement logging and monitoring of update jobs
+* Add failover for scheduler containers
+
+### **6. Security & Configuration**
+
+The project uses simple local credentials for demonstration.
+Production must include:
+
+* Secrets stored via Vault, AWS SSM or Docker secrets
+* Non-root database accounts with limited privileges
+* Environment separation (dev/stage/prod)
+* TLS for RabbitMQ and databases
+
+### **7. Data Model Validations**
+
+The current domain data model is intentionally simplified.
+Production usage should add:
+
+* Strict validation rules
+* Normalization of historical balance events
+* Audit tables or event sourcing
+
+---
+
+### **Summary**
+
+This project demonstrates the architecture and workflow required by the assignment, but **many features are intentionally simplified for clarity**.
+It is **not intended for production use without additional reliability, scaling, security, and error-handling improvements**.
+
+---
