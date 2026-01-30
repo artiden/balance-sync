@@ -5,9 +5,11 @@ namespace App\Services\Wallet;
 use App\Contracts\Service\EventPublisherServiceInterface;
 use App\Contracts\Service\WalletServiceInterface;
 use App\EventMessages\BalanceUpdated;
+use App\Exceptions\EventPublishException;
 use App\Models\Wallet;
 use App\Models\WalletTransaction;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class WalletService implements WalletServiceInterface
 {
@@ -19,7 +21,11 @@ class WalletService implements WalletServiceInterface
     {
         // As we discussed, we could implement retry, go via queue and other stuff here.
         // Also, if it's required, should throw an exception if, for example, balance after update going be <0 and so on.
-        DB::transaction(function() use ($wallet, $amount, $type){
+
+        // Prepare event data after transaction commits (not inside transaction)
+        $eventData = null;
+
+        DB::transaction(function() use ($wallet, $amount, $type, &$eventData){
             $wallet = Wallet::where('id', $wallet->id)
                 ->lockForUpdate()
                 ->firstOrFail();
@@ -36,13 +42,35 @@ class WalletService implements WalletServiceInterface
 
             $wallet->save();
 
-            $this->publisher->publish(new BalanceUpdated(
-                $wallet->user_id,
-                $wallet->id,
-                $wallet->balance,
+            // Capture event data to publish after transaction commits
+            $eventData = [
+                'userId' => $wallet->user_id,
+                'walletId' => $wallet->id,
+                'balance' => $wallet->balance,
                 // To use the same timezone. We could configure globally, but it's not necessary for MVP
-                $wallet->updated_at->setTimezone('UTC')->toISOString()
-            ));
+                'updatedAt' => $wallet->updated_at->setTimezone('UTC')->toISOString(),
+            ];
         });
+
+        // Publish event after transaction is committed successfully
+        // This ensures DB changes are persisted before event is sent
+        if ($eventData !== null) {
+            try {
+                $this->publisher->publish(new BalanceUpdated(
+                    $eventData['userId'],
+                    $eventData['walletId'],
+                    $eventData['balance'],
+                    $eventData['updatedAt']
+                ));
+            } catch (EventPublishException $e) {
+                // Log the failure but don't rollback the transaction
+                // In production, we should implement a retry mechanism or outbox pattern
+                Log::error('Failed to publish balance update event', [
+                    'walletId' => $eventData['walletId'],
+                    'userId' => $eventData['userId'],
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
     }
 }

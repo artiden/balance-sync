@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"log"
 	"time"
 )
@@ -29,7 +30,8 @@ func (s *Syncer) SyncOnce() error {
 }
 
 // Start runs periodic cache synchronisation in the background.
-func (s *Syncer) Start() {
+// It stops when the context is cancelled.
+func (s *Syncer) Start(ctx context.Context) {
 	if err := s.SyncOnce(); err != nil {
 		log.Printf("initial cache sync failed: %v", err)
 	}
@@ -38,9 +40,15 @@ func (s *Syncer) Start() {
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
 
-	for range ticker.C {
-		if err := s.SyncOnce(); err != nil {
-			log.Printf("periodic cache sync failed: %v", err)
+	for {
+		select {
+		case <-ctx.Done():
+			log.Printf("syncer: shutting down")
+			return
+		case <-ticker.C:
+			if err := s.SyncOnce(); err != nil {
+				log.Printf("periodic cache sync failed: %v", err)
+			}
 		}
 	}
 }

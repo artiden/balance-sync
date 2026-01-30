@@ -37,7 +37,7 @@ services:
     environment:
       MYSQL_DSN: "go:root@tcp(go-mysql:3306)/go_service?charset=utf8mb4&parseTime=True&loc=UTC"
       RABBIT_URL: "amqp://guest:guest@rabbitmq:5672/"
-      RABBIT_QUEUE: wallet_queue
+      RABBIT_QUEUE: wallet_events
     depends_on:
       go-mysql:
         condition: service_healthy
